@@ -14,9 +14,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Slider } from "@/components/ui/slider"
 import { Switch } from "@/components/ui/switch"
-import { AlertCircle, Info, Loader2, Search } from "lucide-react"
+import { AlertCircle, Info, Loader2, Search, CheckCircle2 } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import Image from "next/image"
+import { addAnime, type Anime } from "@/lib/data"
+import { toast } from "@/components/ui/use-toast"
+import { ToastAction } from "@/components/ui/toast"
 
 export default function UploadPage() {
   const { user, loading } = useAuth()
@@ -37,15 +40,65 @@ export default function UploadPage() {
   const [videoUrl, setVideoUrl] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState("")
+  const [success, setSuccess] = useState(false)
 
   const [bannerImageUrl, setBannerImageUrl] = useState("")
   const [coverImageUrl, setCoverImageUrl] = useState("")
+  const [isValidatingImages, setIsValidatingImages] = useState(false)
+  const [imageValidationStatus, setImageValidationStatus] = useState({
+    banner: false,
+    cover: false,
+  })
 
   useEffect(() => {
     if (!loading && !user) {
       router.push("/login")
     }
   }, [user, loading, router])
+
+  // Reset form when success is true
+  useEffect(() => {
+    if (success) {
+      const timer = setTimeout(() => {
+        setSuccess(false)
+      }, 5000)
+      return () => clearTimeout(timer)
+    }
+  }, [success])
+
+  const validateImageUrl = async (url: string, type: "banner" | "cover") => {
+    if (!url) {
+      setImageValidationStatus((prev) => ({
+        ...prev,
+        [type]: false,
+      }))
+      return false
+    }
+
+    setIsValidatingImages(true)
+
+    return new Promise<boolean>((resolve) => {
+      const img = new Image()
+      img.onload = () => {
+        setImageValidationStatus((prev) => ({
+          ...prev,
+          [type]: true,
+        }))
+        setIsValidatingImages(false)
+        resolve(true)
+      }
+      img.onerror = () => {
+        setImageValidationStatus((prev) => ({
+          ...prev,
+          [type]: false,
+        }))
+        setIsValidatingImages(false)
+        setError(`Invalid ${type} image URL. Please provide a valid image URL.`)
+        resolve(false)
+      }
+      img.src = url
+    })
+  }
 
   const handleSearch = () => {
     if (!searchQuery.trim()) return
@@ -110,16 +163,19 @@ export default function UploadPage() {
     // Set image URLs if available
     if (anime.bannerImage) {
       setBannerImageUrl(anime.bannerImage)
+      validateImageUrl(anime.bannerImage, "banner")
     }
     if (anime.coverImage) {
       setCoverImageUrl(anime.coverImage)
+      validateImageUrl(anime.coverImage, "cover")
     }
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsSubmitting(true)
     setError("")
+    setSuccess(false)
 
     // Validate form
     if (!title || !description) {
@@ -128,28 +184,73 @@ export default function UploadPage() {
       return
     }
 
-    // Create anime object with all form data
-    const animeData = {
-      title,
-      description,
-      episodes,
-      status,
-      rating: rating[0],
-      releaseYear,
-      genres,
-      videoUrl,
-      bannerImageUrl,
-      coverImageUrl,
-      // Additional fields would be added here in a real implementation
+    // Validate image URLs
+    const isBannerValid = await validateImageUrl(bannerImageUrl, "banner")
+    const isCoverValid = await validateImageUrl(coverImageUrl, "cover")
+
+    if (!isCoverValid) {
+      setError("Cover image is required and must be a valid image URL")
+      setIsSubmitting(false)
+      return
     }
 
-    console.log("Submitting anime data:", animeData)
+    try {
+      // Create anime object with all form data
+      const animeData: Partial<Anime> = {
+        title,
+        description,
+        episodes,
+        status: status as any,
+        rating: rating[0],
+        releaseYear,
+        genres,
+        videoUrl,
+        bannerImage: bannerImageUrl,
+        coverImage: coverImageUrl,
+        uploadedBy: user?.id,
+      }
 
-    // Simulate API call to upload anime
-    setTimeout(() => {
+      console.log("Submitting anime data:", animeData)
+
+      // Add the anime to our data store
+      const newAnime = await addAnime(animeData, user?.id || "")
+
+      // Show success message
+      setSuccess(true)
+      toast({
+        title: "Anime uploaded successfully!",
+        description: `${title} has been added to your uploads.`,
+        action: (
+          <ToastAction altText="View" onClick={() => router.push(`/anime/${newAnime.id}`)}>
+            View
+          </ToastAction>
+        ),
+      })
+
+      // Reset form
+      setTitle("")
+      setDescription("")
+      setEpisodes(1)
+      setStatus("Airing")
+      setRating([7.5])
+      setReleaseYear(new Date().getFullYear())
+      setGenres([])
+      setVideoUrl("")
+      setBannerImageUrl("")
+      setCoverImageUrl("")
+      setImageValidationStatus({ banner: false, cover: false })
+      setSelectedAnime(null)
+
+      // Redirect after a short delay
+      setTimeout(() => {
+        router.push("/profile?tab=uploads")
+      }, 2000)
+    } catch (error) {
+      console.error("Upload failed:", error)
+      setError("Failed to upload anime. Please try again.")
+    } finally {
       setIsSubmitting(false)
-      router.push("/profile?tab=uploads")
-    }, 2000)
+    }
   }
 
   if (loading) {
@@ -241,297 +342,349 @@ export default function UploadPage() {
           </TabsContent>
 
           <CardContent>
-            <form onSubmit={handleSubmit}>
-              <div className="grid gap-6">
+            {success && (
+              <Alert className="mb-6 bg-green-500/10 text-green-500 border-green-500/20">
+                <CheckCircle2 className="h-4 w-4" />
+                <AlertDescription>Anime uploaded successfully! Redirecting to your profile...</AlertDescription>
+              </Alert>
+            )}
+
+            <form onSubmit={handleSubmit} className="space-y-6">
+              {error && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+
+              <div className="grid gap-3">
+                <Label htmlFor="title">
+                  Anime Title <span className="text-destructive">*</span>
+                </Label>
+                <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} required />
+              </div>
+
+              <div className="grid gap-3">
+                <Label htmlFor="description">
+                  Description <span className="text-destructive">*</span>
+                </Label>
+                <Textarea
+                  id="description"
+                  rows={4}
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="grid gap-3">
-                  <Label htmlFor="title">
-                    Anime Title <span className="text-destructive">*</span>
-                  </Label>
-                  <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} required />
-                </div>
-
-                <div className="grid gap-3">
-                  <Label htmlFor="description">
-                    Description <span className="text-destructive">*</span>
-                  </Label>
-                  <Textarea
-                    id="description"
-                    rows={4}
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    required
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="grid gap-3">
-                    <Label htmlFor="episodes">Number of Episodes</Label>
-                    <Input
-                      id="episodes"
-                      type="number"
-                      min={1}
-                      value={episodes}
-                      onChange={(e) => setEpisodes(Number.parseInt(e.target.value))}
-                    />
-                  </div>
-
-                  <div className="grid gap-3">
-                    <Label htmlFor="status">Status</Label>
-                    <Select value={status} onValueChange={setStatus}>
-                      <SelectTrigger id="status">
-                        <SelectValue placeholder="Select status" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Airing">Airing</SelectItem>
-                        <SelectItem value="Completed">Completed</SelectItem>
-                        <SelectItem value="Upcoming">Upcoming</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="grid gap-3">
-                    <div className="flex justify-between">
-                      <Label htmlFor="rating">Rating (1-10)</Label>
-                      <span className="text-sm text-muted-foreground">{rating[0].toFixed(1)}</span>
-                    </div>
-                    <Slider id="rating" min={1} max={10} step={0.1} value={rating} onValueChange={setRating} />
-                  </div>
-
-                  <div className="grid gap-3">
-                    <Label htmlFor="releaseYear">Release Year</Label>
-                    <Input
-                      id="releaseYear"
-                      type="number"
-                      min={1900}
-                      max={new Date().getFullYear() + 1}
-                      value={releaseYear}
-                      onChange={(e) => setReleaseYear(Number.parseInt(e.target.value))}
-                    />
-                  </div>
-                </div>
-
-                <div className="grid gap-3">
-                  <Label htmlFor="genres">Genres</Label>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    {[
-                      "Action",
-                      "Adventure",
-                      "Comedy",
-                      "Drama",
-                      "Fantasy",
-                      "Horror",
-                      "Mystery",
-                      "Romance",
-                      "Sci-Fi",
-                      "Slice of Life",
-                      "Supernatural",
-                      "Thriller",
-                    ].map((genre) => (
-                      <div key={genre} className="flex items-center space-x-2">
-                        <Switch
-                          id={`genre-${genre}`}
-                          checked={genres.includes(genre)}
-                          onCheckedChange={(checked) => {
-                            if (checked) {
-                              setGenres([...genres, genre])
-                            } else {
-                              setGenres(genres.filter((g) => g !== genre))
-                            }
-                          }}
-                        />
-                        <Label htmlFor={`genre-${genre}`}>{genre}</Label>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="grid gap-3">
-                  <Label htmlFor="videoUrl">Video URL (YouTube, CatBox, PeerTube)</Label>
+                  <Label htmlFor="episodes">Number of Episodes</Label>
                   <Input
-                    id="videoUrl"
-                    type="url"
-                    placeholder="https://www.youtube.com/watch?v=..."
-                    value={videoUrl}
-                    onChange={(e) => setVideoUrl(e.target.value)}
+                    id="episodes"
+                    type="number"
+                    min={1}
+                    value={episodes}
+                    onChange={(e) => setEpisodes(Number.parseInt(e.target.value))}
                   />
                 </div>
 
                 <div className="grid gap-3">
-                  <Label>Banner Image</Label>
-                  <div className="grid gap-4">
-                    <div className="border-2 border-dashed rounded-lg p-6 text-center">
-                      <Input id="bannerImage" type="file" className="hidden" />
-                      <Label htmlFor="bannerImage" className="cursor-pointer">
-                        <div className="flex flex-col items-center gap-2">
-                          <Image
-                            src={bannerImageUrl || "/placeholder.svg?height=100&width=200"}
-                            alt="Banner placeholder"
-                            width={200}
-                            height={100}
-                            className="rounded-md"
-                          />
-                          <span className="text-sm text-muted-foreground">
-                            Click to upload banner image (16:9 ratio recommended)
-                          </span>
-                        </div>
-                      </Label>
-                    </div>
+                  <Label htmlFor="status">Status</Label>
+                  <Select value={status} onValueChange={setStatus}>
+                    <SelectTrigger id="status">
+                      <SelectValue placeholder="Select status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Airing">Airing</SelectItem>
+                      <SelectItem value="Completed">Completed</SelectItem>
+                      <SelectItem value="Upcoming">Upcoming</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="bannerImageUrl">Or enter banner image URL</Label>
-                      <Input
-                        id="bannerImageUrl"
-                        type="url"
-                        placeholder="https://example.com/banner.jpg"
-                        value={bannerImageUrl}
-                        onChange={(e) => setBannerImageUrl(e.target.value)}
-                      />
-                      {bannerImageUrl && (
-                        <div className="flex justify-end">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setBannerImageUrl("")}
-                            className="text-xs text-muted-foreground"
-                          >
-                            Clear URL
-                          </Button>
-                        </div>
-                      )}
-                    </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid gap-3">
+                  <div className="flex justify-between">
+                    <Label htmlFor="rating">Rating (1-10)</Label>
+                    <span className="text-sm text-muted-foreground">{rating[0].toFixed(1)}</span>
                   </div>
+                  <Slider id="rating" min={1} max={10} step={0.1} value={rating} onValueChange={setRating} />
                 </div>
 
                 <div className="grid gap-3">
-                  <Label>Cover Image (Logo)</Label>
-                  <div className="grid gap-4">
-                    <div className="border-2 border-dashed rounded-lg p-6 text-center">
-                      <Input id="coverImage" type="file" className="hidden" />
-                      <Label htmlFor="coverImage" className="cursor-pointer">
-                        <div className="flex flex-col items-center gap-2">
+                  <Label htmlFor="releaseYear">Release Year</Label>
+                  <Input
+                    id="releaseYear"
+                    type="number"
+                    min={1900}
+                    max={new Date().getFullYear() + 1}
+                    value={releaseYear}
+                    onChange={(e) => setReleaseYear(Number.parseInt(e.target.value))}
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-3">
+                <Label htmlFor="genres">Genres</Label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {[
+                    "Action",
+                    "Adventure",
+                    "Comedy",
+                    "Drama",
+                    "Fantasy",
+                    "Horror",
+                    "Mystery",
+                    "Romance",
+                    "Sci-Fi",
+                    "Slice of Life",
+                    "Supernatural",
+                    "Thriller",
+                  ].map((genre) => (
+                    <div key={genre} className="flex items-center space-x-2">
+                      <Switch
+                        id={`genre-${genre}`}
+                        checked={genres.includes(genre)}
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            setGenres([...genres, genre])
+                          } else {
+                            setGenres(genres.filter((g) => g !== genre))
+                          }
+                        }}
+                      />
+                      <Label htmlFor={`genre-${genre}`}>{genre}</Label>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid gap-3">
+                <Label htmlFor="videoUrl">Video URL (YouTube, CatBox, PeerTube)</Label>
+                <Input
+                  id="videoUrl"
+                  type="url"
+                  placeholder="https://www.youtube.com/watch?v=..."
+                  value={videoUrl}
+                  onChange={(e) => setVideoUrl(e.target.value)}
+                />
+              </div>
+
+              <div className="grid gap-3">
+                <Label>
+                  Cover Image <span className="text-destructive">*</span>
+                </Label>
+                <div className="grid gap-4">
+                  <div className="border-2 border-dashed rounded-lg p-6 text-center">
+                    <Input id="coverImage" type="file" className="hidden" />
+                    <Label htmlFor="coverImage" className="cursor-pointer">
+                      <div className="flex flex-col items-center gap-2">
+                        <div className="relative w-[100px] h-[150px]">
                           <Image
                             src={coverImageUrl || "/placeholder.svg?height=150&width=100"}
                             alt="Cover placeholder"
-                            width={100}
-                            height={150}
-                            className="rounded-md"
+                            fill
+                            className="rounded-md object-cover"
                           />
-                          <span className="text-sm text-muted-foreground">
-                            Click to upload cover image/logo (2:3 ratio recommended)
-                          </span>
+                          {imageValidationStatus.cover && (
+                            <div className="absolute -top-2 -right-2 bg-green-500 text-white rounded-full p-1">
+                              <CheckCircle2 className="h-4 w-4" />
+                            </div>
+                          )}
                         </div>
-                      </Label>
-                    </div>
+                        <span className="text-sm text-muted-foreground">
+                          Click to upload cover image/logo (2:3 ratio recommended)
+                        </span>
+                      </div>
+                    </Label>
+                  </div>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="coverImageUrl">Or enter cover image/logo URL</Label>
-                      <Input
-                        id="coverImageUrl"
-                        type="url"
-                        placeholder="https://example.com/cover.jpg"
-                        value={coverImageUrl}
-                        onChange={(e) => setCoverImageUrl(e.target.value)}
-                      />
-                      {coverImageUrl && (
-                        <div className="flex justify-end">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setCoverImageUrl("")}
-                            className="text-xs text-muted-foreground"
-                          >
-                            Clear URL
-                          </Button>
+                  <div className="space-y-2">
+                    <Label htmlFor="coverImageUrl">
+                      Or enter cover image/logo URL <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                      id="coverImageUrl"
+                      type="url"
+                      placeholder="https://example.com/cover.jpg"
+                      value={coverImageUrl}
+                      onChange={(e) => {
+                        setCoverImageUrl(e.target.value)
+                        if (e.target.value) {
+                          validateImageUrl(e.target.value, "cover")
+                        } else {
+                          setImageValidationStatus((prev) => ({ ...prev, cover: false }))
+                        }
+                      }}
+                      required
+                    />
+                    {coverImageUrl && (
+                      <div className="flex justify-end">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setCoverImageUrl("")
+                            setImageValidationStatus((prev) => ({ ...prev, cover: false }))
+                          }}
+                          className="text-xs text-muted-foreground"
+                        >
+                          Clear URL
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid gap-3">
+                <Label>Banner Image</Label>
+                <div className="grid gap-4">
+                  <div className="border-2 border-dashed rounded-lg p-6 text-center">
+                    <Input id="bannerImage" type="file" className="hidden" />
+                    <Label htmlFor="bannerImage" className="cursor-pointer">
+                      <div className="flex flex-col items-center gap-2">
+                        <div className="relative w-[200px] h-[100px]">
+                          <Image
+                            src={bannerImageUrl || "/placeholder.svg?height=100&width=200"}
+                            alt="Banner placeholder"
+                            fill
+                            className="object-cover rounded"
+                          />
+                          {imageValidationStatus.banner && (
+                            <div className="absolute -top-2 -right-2 bg-green-500 text-white rounded-full p-1">
+                              <CheckCircle2 className="h-4 w-4" />
+                            </div>
+                          )}
+                        </div>
+                        <span className="text-sm text-muted-foreground">
+                          Click to upload banner image (16:9 ratio recommended)
+                        </span>
+                      </div>
+                    </Label>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="bannerImageUrl">Or enter banner image URL</Label>
+                    <Input
+                      id="bannerImageUrl"
+                      type="url"
+                      placeholder="https://example.com/banner.jpg"
+                      value={bannerImageUrl}
+                      onChange={(e) => {
+                        setBannerImageUrl(e.target.value)
+                        if (e.target.value) {
+                          validateImageUrl(e.target.value, "banner")
+                        } else {
+                          setImageValidationStatus((prev) => ({ ...prev, banner: false }))
+                        }
+                      }}
+                    />
+                    {bannerImageUrl && (
+                      <div className="flex justify-end">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setBannerImageUrl("")
+                            setImageValidationStatus((prev) => ({ ...prev, banner: false }))
+                          }}
+                          className="text-xs text-muted-foreground"
+                        >
+                          Clear URL
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid gap-6 mt-6">
+                <div className="border-t pt-6">
+                  <h3 className="text-lg font-semibold mb-4">Preview</h3>
+
+                  <div className="bg-card rounded-lg overflow-hidden">
+                    {/* Banner Preview */}
+                    <div className="relative h-[150px] w-full">
+                      {bannerImageUrl ? (
+                        <Image
+                          src={bannerImageUrl || "/placeholder.svg"}
+                          alt="Banner Preview"
+                          fill
+                          className="object-cover"
+                          onError={() => {
+                            setError("Banner image URL is invalid or inaccessible")
+                            setBannerImageUrl("")
+                            setImageValidationStatus((prev) => ({ ...prev, banner: false }))
+                          }}
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-muted/50">
+                          <p className="text-muted-foreground text-sm">Banner preview will appear here</p>
                         </div>
                       )}
                     </div>
-                  </div>
-                </div>
 
-                <div className="grid gap-6 mt-6">
-                  <div className="border-t pt-6">
-                    <h3 className="text-lg font-semibold mb-4">Preview</h3>
-
-                    <div className="bg-card rounded-lg overflow-hidden">
-                      {/* Banner Preview */}
-                      <div className="relative h-[150px] w-full">
-                        {bannerImageUrl ? (
+                    {/* Content Preview */}
+                    <div className="p-4 flex gap-4">
+                      {/* Cover/Logo Preview */}
+                      <div className="relative w-[80px] h-[120px] flex-shrink-0">
+                        {coverImageUrl ? (
                           <Image
-                            src={bannerImageUrl || "/placeholder.svg"}
-                            alt="Banner Preview"
+                            src={coverImageUrl || "/placeholder.svg"}
+                            alt="Cover Preview"
                             fill
-                            className="object-cover"
+                            className="object-cover rounded-md"
                             onError={() => {
-                              setError("Banner image URL is invalid or inaccessible")
-                              setBannerImageUrl("")
+                              setError("Cover image URL is invalid or inaccessible")
+                              setCoverImageUrl("")
+                              setImageValidationStatus((prev) => ({ ...prev, cover: false }))
                             }}
                           />
                         ) : (
-                          <div className="w-full h-full flex items-center justify-center bg-muted/50">
-                            <p className="text-muted-foreground text-sm">Banner preview will appear here</p>
+                          <div className="w-full h-full flex items-center justify-center bg-muted/50 rounded-md">
+                            <p className="text-muted-foreground text-xs text-center">Cover preview</p>
                           </div>
                         )}
                       </div>
 
-                      {/* Content Preview */}
-                      <div className="p-4 flex gap-4">
-                        {/* Cover/Logo Preview */}
-                        <div className="relative w-[80px] h-[120px] flex-shrink-0">
-                          {coverImageUrl ? (
-                            <Image
-                              src={coverImageUrl || "/placeholder.svg"}
-                              alt="Cover Preview"
-                              fill
-                              className="object-cover rounded-md"
-                              onError={() => {
-                                setError("Cover image URL is invalid or inaccessible")
-                                setCoverImageUrl("")
-                              }}
-                            />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center bg-muted/50 rounded-md">
-                              <p className="text-muted-foreground text-xs text-center">Cover preview</p>
-                            </div>
-                          )}
+                      {/* Anime Details Preview */}
+                      <div>
+                        <h4 className="font-semibold">{title || "Anime Title"}</h4>
+                        <div className="flex gap-2 mt-1 flex-wrap">
+                          <span className="text-xs bg-secondary px-2 py-0.5 rounded">{releaseYear || "Year"}</span>
+                          <span className="text-xs bg-secondary px-2 py-0.5 rounded">{episodes || 0} eps</span>
+                          <span className="text-xs bg-secondary px-2 py-0.5 rounded">{rating[0].toFixed(1)}★</span>
+                          <span className="text-xs bg-secondary px-2 py-0.5 rounded">{status}</span>
                         </div>
-
-                        {/* Anime Details Preview */}
-                        <div>
-                          <h4 className="font-semibold">{title || "Anime Title"}</h4>
-                          <div className="flex gap-2 mt-1 flex-wrap">
-                            <span className="text-xs bg-secondary px-2 py-0.5 rounded">{releaseYear || "Year"}</span>
-                            <span className="text-xs bg-secondary px-2 py-0.5 rounded">{episodes || 0} eps</span>
-                            <span className="text-xs bg-secondary px-2 py-0.5 rounded">{rating[0].toFixed(1)}★</span>
-                            <span className="text-xs bg-secondary px-2 py-0.5 rounded">{status}</span>
-                          </div>
-                          <p className="text-sm text-muted-foreground mt-2 line-clamp-2">
-                            {description || "Anime description will appear here"}
-                          </p>
-                        </div>
+                        <p className="text-sm text-muted-foreground mt-2 line-clamp-2">
+                          {description || "Anime description will appear here"}
+                        </p>
                       </div>
                     </div>
                   </div>
                 </div>
-
-                {error && (
-                  <Alert variant="destructive">
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertDescription>{error}</AlertDescription>
-                  </Alert>
-                )}
               </div>
 
               <CardFooter className="flex justify-between px-0 pt-6">
                 <Button variant="outline" type="button" onClick={() => router.back()}>
                   Cancel
                 </Button>
-                <Button type="submit" disabled={isSubmitting}>
+                <Button
+                  type="submit"
+                  disabled={isSubmitting || isValidatingImages || !coverImageUrl || !imageValidationStatus.cover}
+                >
                   {isSubmitting ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       Uploading...
+                    </>
+                  ) : isValidatingImages ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Validating Images...
                     </>
                   ) : (
                     "Upload Anime"

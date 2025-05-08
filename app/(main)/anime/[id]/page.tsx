@@ -1,18 +1,21 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { getAnimeById } from "@/lib/data"
+import { getAnimeById, getUserById } from "@/lib/data"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Heart, Play, Plus, Star, Share2, Flag } from "lucide-react"
+import { Heart, Play, Plus, Star, Share2, Flag, User } from "lucide-react"
 import Image from "next/image"
 import { useAuth } from "@/hooks/use-auth"
 import { useRouter } from "next/navigation"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
+import Link from "next/link"
+import { toast } from "@/components/ui/use-toast"
 
 export default function AnimePage({ params }: { params: { id: string } }) {
   const [anime, setAnime] = useState(getAnimeById(params.id))
+  const [uploader, setUploader] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [activeTab, setActiveTab] = useState("episodes")
   const [isPlaying, setIsPlaying] = useState(false)
@@ -23,15 +26,27 @@ export default function AnimePage({ params }: { params: { id: string } }) {
     // Simulate loading data
     const timer = setTimeout(() => {
       setIsLoading(false)
+
+      // If anime has an uploader, fetch their info
+      if (anime?.uploadedBy) {
+        const uploaderInfo = getUserById(anime.uploadedBy)
+        setUploader(uploaderInfo)
+      }
     }, 500)
 
     return () => clearTimeout(timer)
-  }, [])
+  }, [anime])
 
   if (!anime) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <p>Anime not found</p>
+        <div className="text-center">
+          <h2 className="text-2xl font-bold mb-4">Anime Not Found</h2>
+          <p className="text-muted-foreground mb-6">The anime you're looking for doesn't exist or has been removed.</p>
+          <Button asChild>
+            <Link href="/browse">Browse Anime</Link>
+          </Button>
+        </div>
       </div>
     )
   }
@@ -39,6 +54,51 @@ export default function AnimePage({ params }: { params: { id: string } }) {
   const handlePlayVideo = () => {
     setIsPlaying(true)
     setActiveTab("watch")
+  }
+
+  const handleAddToFavorites = () => {
+    if (!user) {
+      router.push("/login")
+      return
+    }
+
+    toast({
+      title: "Added to Favorites",
+      description: `${anime.title} has been added to your favorites.`,
+    })
+  }
+
+  const handleAddToWatchlist = () => {
+    if (!user) {
+      router.push("/login")
+      return
+    }
+
+    toast({
+      title: "Added to Watchlist",
+      description: `${anime.title} has been added to your watchlist.`,
+    })
+  }
+
+  const handleShare = () => {
+    if (navigator.share) {
+      navigator
+        .share({
+          title: anime.title,
+          text: `Check out ${anime.title} on AniTV!`,
+          url: window.location.href,
+        })
+        .catch((err) => {
+          console.error("Error sharing:", err)
+        })
+    } else {
+      // Fallback for browsers that don't support the Web Share API
+      navigator.clipboard.writeText(window.location.href)
+      toast({
+        title: "Link Copied",
+        description: "Anime link copied to clipboard!",
+      })
+    }
   }
 
   return (
@@ -71,6 +131,13 @@ export default function AnimePage({ params }: { params: { id: string } }) {
             ) : (
               <div className="relative w-48 h-72 rounded-lg overflow-hidden shadow-lg">
                 <Image src={anime.coverImage || "/placeholder.svg"} alt={anime.title} fill className="object-cover" />
+                {anime.uploadedBy && (
+                  <div className="absolute top-2 left-2">
+                    <Badge variant="outline" className="bg-primary/20 text-primary border-primary/30">
+                      Community
+                    </Badge>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -126,16 +193,39 @@ export default function AnimePage({ params }: { params: { id: string } }) {
                   <Button size="lg" onClick={handlePlayVideo} className="group">
                     <Play className="mr-2 h-5 w-5 group-hover:animate-pulse" /> Watch Now
                   </Button>
-                  <Button variant="outline" size="lg">
+                  <Button variant="outline" size="lg" onClick={handleAddToFavorites}>
                     <Heart className="mr-2 h-5 w-5" /> Add to Favorites
                   </Button>
-                  <Button variant="outline" size="lg">
+                  <Button variant="outline" size="lg" onClick={handleAddToWatchlist}>
                     <Plus className="mr-2 h-5 w-5" /> Add to Watchlist
                   </Button>
-                  <Button variant="ghost" size="icon" className="rounded-full">
+                  <Button variant="ghost" size="icon" className="rounded-full" onClick={handleShare}>
                     <Share2 className="h-5 w-5" />
                   </Button>
                 </div>
+
+                {uploader && (
+                  <div className="mt-6 flex items-center gap-2">
+                    <p className="text-sm text-muted-foreground">Uploaded by:</p>
+                    <Link href={`/profile/${uploader.id}`} className="flex items-center gap-2 hover:text-primary">
+                      <div className="relative w-6 h-6 rounded-full overflow-hidden">
+                        {uploader.image ? (
+                          <Image
+                            src={uploader.image || "/placeholder.svg"}
+                            alt={uploader.name}
+                            fill
+                            className="object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full bg-muted flex items-center justify-center">
+                            <User className="h-4 w-4" />
+                          </div>
+                        )}
+                      </div>
+                      <span className="font-medium">{uploader.name}</span>
+                    </Link>
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -264,10 +354,40 @@ export default function AnimePage({ params }: { params: { id: string } }) {
                 {anime.uploadedBy && (
                   <div>
                     <h3 className="text-lg font-semibold mb-2">Community Upload</h3>
-                    <p className="text-muted-foreground">
+                    <p className="text-muted-foreground mb-2">
                       This anime was uploaded by a community member. If you find any issues, please report them.
                     </p>
-                    <Button variant="outline" size="sm" className="mt-2">
+                    {uploader && (
+                      <div className="flex items-center gap-2 mb-4">
+                        <Link href={`/profile/${uploader.id}`} className="flex items-center gap-2 hover:text-primary">
+                          <div className="relative w-6 h-6 rounded-full overflow-hidden">
+                            {uploader.image ? (
+                              <Image
+                                src={uploader.image || "/placeholder.svg"}
+                                alt={uploader.name}
+                                fill
+                                className="object-cover"
+                              />
+                            ) : (
+                              <div className="w-full h-full bg-muted flex items-center justify-center">
+                                <User className="h-4 w-4" />
+                              </div>
+                            )}
+                          </div>
+                          <span className="font-medium">{uploader.name}</span>
+                        </Link>
+                      </div>
+                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        toast({
+                          title: "Issue Reported",
+                          description: "Thank you for reporting this issue. Our team will review it shortly.",
+                        })
+                      }}
+                    >
                       <Flag className="h-4 w-4 mr-2" /> Report Issue
                     </Button>
                   </div>

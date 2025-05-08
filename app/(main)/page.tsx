@@ -1,4 +1,4 @@
-import { featuredAnime, allAnime, getUserUploads } from "@/lib/data"
+import { featuredAnime, allAnime, getCommunityUploads } from "@/lib/data"
 import { AnimeCard } from "@/components/anime-card"
 import { Button } from "@/components/ui/button"
 import { ChevronRight, Play } from "lucide-react"
@@ -12,8 +12,16 @@ export default function HomePage() {
   // Get the rest of the anime for the grid
   const recentAnime = allAnime.slice(0, 8)
 
-  // Get community uploads (this would normally be fetched from an API)
-  const communityUploads = getUserUploads("1").concat(getUserUploads("2"))
+  // Get community uploads
+  const communityUploads = getCommunityUploads()
+    .sort((a, b) => {
+      // Sort by creation date (newest first) if available
+      if (a.createdAt && b.createdAt) {
+        return b.createdAt - a.createdAt
+      }
+      return 0
+    })
+    .slice(0, 5) // Get the 5 most recent uploads
 
   return (
     <div className="min-h-screen">
@@ -52,7 +60,10 @@ export default function HomePage() {
         <section className="py-12 bg-gradient-to-r from-primary/5 to-transparent">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex items-center justify-between mb-8">
-              <h2 className="text-2xl font-bold">Community Uploads</h2>
+              <div>
+                <h2 className="text-2xl font-bold">Community Uploads</h2>
+                <p className="text-muted-foreground">Latest anime shared by our community</p>
+              </div>
               <Button variant="ghost" asChild>
                 <Link href="/browse?filter=community" className="flex items-center">
                   View All <ChevronRight className="ml-1 h-4 w-4" />
@@ -72,7 +83,10 @@ export default function HomePage() {
       <section className="py-12 bg-card/50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between mb-8">
-            <h2 className="text-2xl font-bold">Featured Anime</h2>
+            <div>
+              <h2 className="text-2xl font-bold">Featured Anime</h2>
+              <p className="text-muted-foreground">Curated selection of top anime</p>
+            </div>
             <Button variant="ghost" asChild>
               <Link href="/browse" className="flex items-center">
                 View All <ChevronRight className="ml-1 h-4 w-4" />
@@ -91,7 +105,10 @@ export default function HomePage() {
       <section className="py-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between mb-8">
-            <h2 className="text-2xl font-bold">Recent Releases</h2>
+            <div>
+              <h2 className="text-2xl font-bold">Recent Releases</h2>
+              <p className="text-muted-foreground">Stay up to date with the latest episodes</p>
+            </div>
             <Button variant="ghost" asChild>
               <Link href="/browse" className="flex items-center">
                 View All <ChevronRight className="ml-1 h-4 w-4" />

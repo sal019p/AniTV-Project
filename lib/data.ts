@@ -1,3 +1,5 @@
+import { logger } from "@/lib/logger"
+
 // Types for anime data
 export type AnimeStatus = "Airing" | "Completed" | "Upcoming"
 
@@ -14,6 +16,7 @@ export interface Anime {
   releaseYear: number
   videoUrl?: string
   uploadedBy?: string
+  createdAt?: number
 }
 
 // Mock data for featured anime
@@ -203,6 +206,9 @@ export const allAnime: Anime[] = [
   },
 ]
 
+// In-memory storage for user uploads
+const userUploads: Anime[] = []
+
 // Mock user data
 export interface User {
   id: string
@@ -237,7 +243,24 @@ export const mockUsers: User[] = [
 
 // Helper function to get anime by ID
 export function getAnimeById(id: string): Anime | undefined {
-  return allAnime.find((anime) => anime.id === id)
+  logger.dataFlow(`Fetching anime with ID: ${id}`)
+
+  // First check in allAnime
+  const animeFromAll = allAnime.find((anime) => anime.id === id)
+  if (animeFromAll) {
+    logger.dataFlow(`Found anime in allAnime: ${animeFromAll.title}`)
+    return animeFromAll
+  }
+
+  // Then check in userUploads
+  const animeFromUploads = userUploads.find((anime) => anime.id === id)
+  if (animeFromUploads) {
+    logger.dataFlow(`Found anime in userUploads: ${animeFromUploads.title}`)
+    return animeFromUploads
+  }
+
+  logger.warn(`Anime with ID ${id} not found`)
+  return undefined
 }
 
 // Helper function to get user by ID
@@ -247,24 +270,94 @@ export function getUserById(id: string): User | undefined {
 
 // Helper function to get user's favorite anime
 export function getUserFavorites(userId: string): Anime[] {
+  logger.dataFlow(`Fetching favorites for user: ${userId}`)
+
   const user = getUserById(userId)
-  if (!user) return []
-  return allAnime.filter((anime) => user.favorites.includes(anime.id))
+  if (!user) {
+    logger.warn(`User with ID ${userId} not found`)
+    return []
+  }
+
+  // Get favorites from both allAnime and userUploads
+  const favorites = [...allAnime, ...userUploads].filter((anime) => user.favorites.includes(anime.id))
+  logger.dataFlow(`Found ${favorites.length} favorites for user ${userId}`)
+
+  return favorites
 }
 
 // Helper function to get user's uploaded anime
 export function getUserUploads(userId: string): Anime[] {
+  logger.dataFlow(`Fetching uploads for user: ${userId}`)
+
   // First check the uploads array in the user object
   const user = getUserById(userId)
-  if (!user) return []
+  if (!user) {
+    logger.warn(`User with ID ${userId} not found`)
+    return []
+  }
 
-  // Then check the uploadedBy field in the anime objects
-  return allAnime.filter((anime) => user.uploads.includes(anime.id) || anime.uploadedBy === userId)
+  // Get uploads from both allAnime and userUploads
+  const uploads = [
+    ...allAnime.filter((anime) => user.uploads.includes(anime.id) || anime.uploadedBy === userId),
+    ...userUploads.filter((anime) => anime.uploadedBy === userId),
+  ]
+
+  logger.dataFlow(`Found ${uploads.length} uploads for user ${userId}`)
+  return uploads
 }
 
 // Helper function to get all community uploads
 export function getCommunityUploads(): Anime[] {
-  return allAnime.filter((anime) => anime.uploadedBy !== undefined)
+  logger.dataFlow(`Fetching all community uploads`)
+
+  const communityAnime = [...allAnime.filter((anime) => anime.uploadedBy !== undefined), ...userUploads]
+
+  logger.dataFlow(`Found ${communityAnime.length} community uploads`)
+  return communityAnime
+}
+
+// Function to add a new anime
+export async function addAnime(animeData: Partial<Anime>, userId: string): Promise<Anime> {
+  logger.dataFlow(`Adding new anime: ${animeData.title} by user ${userId}`)
+
+  // Simulate API delay
+  await new Promise((resolve) => setTimeout(resolve, 1000))
+
+  // Generate a unique ID
+  const id = `anime-${Date.now()}-${Math.floor(Math.random() * 1000)}`
+
+  // Create the new anime object
+  const newAnime: Anime = {
+    id,
+    title: animeData.title || "Untitled Anime",
+    description: animeData.description || "No description provided",
+    coverImage: animeData.coverImage || "/placeholder.svg?height=400&width=300",
+    bannerImage: animeData.bannerImage,
+    episodes: animeData.episodes || 1,
+    status: animeData.status || "Airing",
+    rating: animeData.rating || 7.0,
+    genres: animeData.genres || [],
+    releaseYear: animeData.releaseYear || new Date().getFullYear(),
+    videoUrl: animeData.videoUrl,
+    uploadedBy: userId,
+    createdAt: Date.now(),
+  }
+
+  // Add to userUploads array
+  userUploads.push(newAnime)
+
+  // Update the user's uploads array
+  const user = mockUsers.find((u) => u.id === userId)
+  if (user) {
+    user.uploads.push(id)
+    logger.dataFlow(`Updated user ${userId} uploads array, now has ${user.uploads.length} uploads`)
+  }
+
+  // Log the upload for debugging
+  logger.info(`New anime uploaded: ${newAnime.title} by user ${userId}`)
+  logger.info(`Total user uploads: ${userUploads.length}`)
+
+  return newAnime
 }
 
 // Mock data for anime schedule
