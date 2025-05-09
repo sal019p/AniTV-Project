@@ -1,167 +1,67 @@
-"use client"
-
-import type React from "react"
-
-import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { AlertCircle, Loader2 } from "lucide-react"
-import { useToast } from "@/components/ui/use-toast"
-import NextLink from "next/link"
-import { Alert, AlertDescription } from "@/components/ui/alert"
+import Link from "next/link"
 import { isSupabaseConfigured } from "@/lib/supabase"
-import { useAuth } from "@/hooks/use-auth"
 
 export default function LoginPage() {
-  const router = useRouter()
-  const { toast } = useToast()
-  const { signIn } = useAuth()
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [isConfigured, setIsConfigured] = useState(true)
-
-  // Check if Supabase is configured
-  useEffect(() => {
-    setIsConfigured(isSupabaseConfigured())
-  }, [])
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault()
-
-    if (!isConfigured) {
-      setError("Supabase is not configured. Please set up your environment variables.")
-      return
-    }
-
-    if (!email || !password) {
-      setError("Please enter both email and password")
-      return
-    }
-
-    setLoading(true)
-    setError(null)
-
-    try {
-      const { success, error } = await signIn(email, password)
-
-      if (!success) {
-        throw new Error(error || "Failed to sign in")
-      }
-
-      toast({
-        title: "Login successful",
-        description: "You have been logged in successfully",
-      })
-
-      router.push("/")
-      router.refresh()
-    } catch (err) {
-      console.error(err)
-      setError(err instanceof Error ? err.message : "An unknown error occurred")
-      toast({
-        title: "Login failed",
-        description: err instanceof Error ? err.message : "An unknown error occurred",
-        variant: "destructive",
-      })
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  // For demo mode, allow login with any credentials
-  const handleDemoLogin = () => {
-    if (isConfigured) return
-
-    toast({
-      title: "Demo mode active",
-      description: "Logging in with demo account",
-    })
-
-    setTimeout(() => {
-      router.push("/")
-    }, 1000)
-  }
+  const supabaseConfigured = isSupabaseConfigured()
 
   return (
-    <div className="container mx-auto py-10">
-      <Card className="max-w-md mx-auto">
-        <CardHeader>
-          <CardTitle>Login</CardTitle>
-          <CardDescription>Enter your credentials to access your account</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {!isConfigured && (
-            <Alert variant="warning" className="mb-4">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                Supabase is not configured. Please set up your environment variables. You can use demo mode instead.
-              </AlertDescription>
-            </Alert>
-          )}
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="Enter your email"
-                required
-              />
-            </div>
+    <div className="flex items-center justify-center min-h-screen bg-gray-100">
+      <div className="w-full max-w-md p-6 bg-white rounded-lg shadow-md">
+        <h1 className="text-2xl font-bold mb-4">Login</h1>
+        <p className="text-gray-600 mb-6">Enter your credentials to access your account</p>
 
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter your password"
-                required
-              />
-            </div>
-
-            {error && (
-              <div className="flex items-center gap-2 text-red-500">
-                <AlertCircle className="h-4 w-4" />
-                <span>{error}</span>
-              </div>
-            )}
-          </form>
-        </CardContent>
-        <CardFooter className="flex flex-col gap-4">
-          {isConfigured ? (
-            <Button type="submit" onClick={handleLogin} disabled={loading} className="w-full">
-              {loading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Logging in...
-                </>
-              ) : (
-                "Login"
-              )}
-            </Button>
-          ) : (
-            <Button type="button" onClick={handleDemoLogin} className="w-full">
-              Continue in Demo Mode
-            </Button>
-          )}
-
-          <div className="text-center text-sm">
-            Don't have an account?{" "}
-            <NextLink href="/register" className="text-primary hover:underline">
-              Register
-            </NextLink>
+        {!supabaseConfigured && (
+          <div className="mb-6 p-4 bg-yellow-100 border border-yellow-200 rounded-lg text-yellow-800">
+            <p className="font-medium">Demo Mode Active</p>
+            <p className="text-sm">Supabase is not configured. Authentication is disabled.</p>
           </div>
-        </CardFooter>
-      </Card>
+        )}
+
+        <form>
+          <div className="mb-4">
+            <label htmlFor="email" className="block text-sm font-medium mb-1">
+              Email
+            </label>
+            <input
+              id="email"
+              type="email"
+              className="w-full p-2 border rounded-md"
+              placeholder="Enter your email"
+              disabled={!supabaseConfigured}
+            />
+          </div>
+
+          <div className="mb-6">
+            <label htmlFor="password" className="block text-sm font-medium mb-1">
+              Password
+            </label>
+            <input
+              id="password"
+              type="password"
+              className="w-full p-2 border rounded-md"
+              placeholder="Enter your password"
+              disabled={!supabaseConfigured}
+            />
+          </div>
+
+          <button
+            type="submit"
+            className="w-full py-2 px-4 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400"
+            disabled={!supabaseConfigured}
+          >
+            Sign In
+          </button>
+        </form>
+
+        <div className="mt-4 text-center">
+          <p className="text-sm text-gray-600">
+            Don&apos;t have an account?{" "}
+            <Link href="/register" className="text-blue-600 hover:underline">
+              Register
+            </Link>
+          </p>
+        </div>
+      </div>
     </div>
   )
 }

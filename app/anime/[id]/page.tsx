@@ -1,206 +1,75 @@
-"use client"
+import { getAnimeById, getEpisodesByAnimeId, isSupabaseConfigured } from "@/lib/supabase"
+import Link from "next/link"
 
-import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
-import Image from "next/image"
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
-// Update the import to use the icons from the new file
-import { Loader2 } from "@/components/ui/icons"
-import { useToast } from "@/components/ui/use-toast"
-
-interface Anime {
-  id: string
-  title: string
-  description: string
-  cover_image: string
-  banner_image: string
-  episodes_count: number
-  status: string
-  rating: number
-  genres: string[]
-  release_year: number
-  is_featured: boolean
-  created_at: string
-}
-
-interface Episode {
-  id: string
-  anime_id: string
-  title: string
-  description: string
-  episode_number: number
-  video_url: string
-  thumbnail: string
-  created_at: string
-}
-
-export default function AnimePage({ params }: { params: { id: string } }) {
-  const router = useRouter()
-  const { toast } = useToast()
-  const supabase = createClientComponentClient()
-
-  const [anime, setAnime] = useState<Anime | null>(null)
-  const [episodes, setEpisodes] = useState<Episode[]>([])
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    const fetchAnime = async () => {
-      try {
-        // Fetch anime details
-        const { data: animeData, error: animeError } = await supabase
-          .from("anime")
-          .select("*")
-          .eq("id", params.id)
-          .single()
-
-        if (animeError) throw animeError
-
-        setAnime(animeData)
-
-        // Fetch episodes
-        const { data: episodesData, error: episodesError } = await supabase
-          .from("anime_episodes")
-          .select("*")
-          .eq("anime_id", params.id)
-          .order("episode_number", { ascending: true })
-
-        if (episodesError) throw episodesError
-
-        setEpisodes(episodesData || [])
-      } catch (err) {
-        console.error(err)
-        toast({
-          title: "Error",
-          description: "Failed to load anime details",
-          variant: "destructive",
-        })
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchAnime()
-  }, [params.id, supabase, toast])
-
-  const handleEpisodeClick = (episodeId: string) => {
-    router.push(`/anime/${params.id}/episode/${episodeId}`)
-  }
-
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center min-h-screen">
-        <Loader2 className="h-8 w-8 animate-spin" />
-      </div>
-    )
-  }
+export default async function AnimePage({ params }: { params: { id: string } }) {
+  const { data: anime } = await getAnimeById(params.id)
+  const { data: episodes } = await getEpisodesByAnimeId(params.id)
 
   if (!anime) {
     return (
-      <div className="container mx-auto py-10 text-center">
-        <h1 className="text-2xl font-bold">Anime not found</h1>
-        <Button onClick={() => router.push("/")} className="mt-4">
+      <div className="container mx-auto px-4 py-8">
+        <h1 className="text-3xl font-bold mb-6">Anime Not Found</h1>
+        <p>The anime you are looking for does not exist.</p>
+        <Link href="/" className="text-blue-600 hover:underline mt-4 inline-block">
           Back to Home
-        </Button>
+        </Link>
       </div>
     )
   }
 
   return (
-    <div className="container mx-auto py-6">
-      <div className="relative h-[300px] md:h-[400px] rounded-xl overflow-hidden mb-6">
-        <Image src={anime.banner_image || anime.cover_image} alt={anime.title} fill className="object-cover" priority />
-        <div className="absolute inset-0 bg-gradient-to-t from-background to-transparent" />
-        <div className="absolute bottom-0 left-0 p-6">
-          <h1 className="text-3xl md:text-4xl font-bold text-white">{anime.title}</h1>
-          <div className="flex flex-wrap gap-2 mt-2">
-            {anime.genres.map((genre) => (
-              <span key={genre} className="px-2 py-1 bg-primary/20 text-primary rounded-md text-sm">
-                {genre}
-              </span>
-            ))}
-          </div>
-          <div className="flex items-center gap-4 mt-4 text-white">
-            <span>{anime.release_year}</span>
-            <span>•</span>
-            <span>{anime.status}</span>
-            <span>•</span>
-            <span>{anime.episodes_count} episodes</span>
-            {anime.rating > 0 && (
-              <>
-                <span>•</span>
-                <span>Rating: {anime.rating.toFixed(1)}</span>
-              </>
-            )}
-          </div>
+    <div className="container mx-auto px-4 py-8">
+      {!isSupabaseConfigured() && (
+        <div className="mb-6 p-4 bg-yellow-100 border border-yellow-200 rounded-lg text-yellow-800">
+          <p className="font-medium">Demo Mode Active</p>
+          <p className="text-sm">Supabase is not configured. Using mock data.</p>
         </div>
-      </div>
+      )}
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="md:col-span-2">
-          <h2 className="text-2xl font-bold mb-4">Synopsis</h2>
-          <p className="text-muted-foreground">{anime.description}</p>
-
-          <h2 className="text-2xl font-bold mt-8 mb-4">Episodes</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {episodes.length > 0 ? (
-              episodes.map((episode) => (
-                <Card
-                  key={episode.id}
-                  className="overflow-hidden cursor-pointer hover:opacity-90 transition-opacity"
-                  onClick={() => handleEpisodeClick(episode.id)}
-                >
-                  <div className="relative h-[120px]">
-                    <Image
-                      src={episode.thumbnail || "/placeholder.svg"}
-                      alt={episode.title}
-                      fill
-                      className="object-cover"
-                    />
-                    <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-background to-transparent p-2">
-                      <span className="text-sm font-medium">Episode {episode.episode_number}</span>
-                    </div>
-                  </div>
-                  <CardContent className="p-3">
-                    <h3 className="font-medium line-clamp-1">{episode.title}</h3>
-                  </CardContent>
-                </Card>
-              ))
-            ) : (
-              <p className="text-muted-foreground">No episodes available yet.</p>
-            )}
-          </div>
+      <div className="flex flex-col md:flex-row gap-8">
+        <div className="md:w-1/3">
+          <img
+            src={anime.cover_image || "/placeholder.svg"}
+            alt={anime.title}
+            className="w-full rounded-lg shadow-md"
+          />
         </div>
-
-        <div>
-          <div className="sticky top-20">
-            <h2 className="text-2xl font-bold mb-4">Information</h2>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Status:</span>
-                <span>{anime.status}</span>
+        <div className="md:w-2/3">
+          <h1 className="text-3xl font-bold mb-4">{anime.title}</h1>
+          <p className="text-gray-700 mb-6">{anime.description}</p>
+          <div className="mb-6">
+            <h2 className="text-xl font-semibold mb-2">Details</h2>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-gray-600">Episodes</p>
+                <p className="font-medium">{anime.episodes_count || "Unknown"}</p>
               </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Episodes:</span>
-                <span>{anime.episodes_count}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Year:</span>
-                <span>{anime.release_year}</span>
-              </div>
-              {anime.rating > 0 && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Rating:</span>
-                  <span>{anime.rating.toFixed(1)}</span>
-                </div>
-              )}
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Type:</span>
-                <span>{anime.is_featured ? "Featured" : "Normal"}</span>
+              <div>
+                <p className="text-gray-600">Status</p>
+                <p className="font-medium">{anime.status || "Unknown"}</p>
               </div>
             </div>
           </div>
+
+          {episodes && episodes.length > 0 && (
+            <div className="mb-6">
+              <h2 className="text-xl font-semibold mb-2">Episodes</h2>
+              <div className="space-y-2">
+                {episodes.map((episode) => (
+                  <div key={episode.id} className="p-3 border rounded-lg">
+                    <p className="font-medium">
+                      Episode {episode.episode_number}: {episode.title}
+                    </p>
+                    <p className="text-sm text-gray-600">{episode.description}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <Link href="/" className="inline-block px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+            Back to Home
+          </Link>
         </div>
       </div>
     </div>
