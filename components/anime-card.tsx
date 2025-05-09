@@ -1,85 +1,44 @@
 import Link from "next/link"
 import Image from "next/image"
 import { Card, CardContent } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Star } from "lucide-react"
-import { cn } from "@/lib/utils"
 
 interface AnimeCardProps {
-  anime: {
-    id: string
-    title: string
-    description: string
-    cover_image?: string
-    coverImage?: string
-    banner_image?: string | null
-    bannerImage?: string | null
-    episodes_count?: number
-    episodes?: number
-    status: string
-    rating: number
-    genres: string[]
-    release_year?: number
-    releaseYear?: number
-    uploaded_by?: string | null
-    uploadedBy?: string | null
-    is_community?: boolean
-    isCommunity?: boolean
-  }
-  className?: string
+  anime: any
+  aspectRatio?: "portrait" | "square"
+  width?: number
+  height?: number
 }
 
-export function AnimeCard({ anime, className }: AnimeCardProps) {
-  // Function to get status color
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "Airing":
-        return "bg-green-500"
-      case "Completed":
-        return "bg-blue-500"
-      case "Upcoming":
-        return "bg-yellow-500"
-      default:
-        return "bg-gray-500"
-    }
-  }
-
-  // Handle different property names between mock data and Supabase data
-  const coverImage = anime.cover_image || anime.coverImage || "/placeholder.svg"
-  const isCommunity = anime.is_community || anime.isCommunity || false
-  const uploadedBy = anime.uploaded_by || anime.uploadedBy
-  const releaseYear = anime.release_year || anime.releaseYear || new Date().getFullYear()
+export function AnimeCard({ anime, aspectRatio = "portrait", width, height }: AnimeCardProps) {
+  // Handle different property names between mock data and real data
+  const title = anime.title
+  const coverImage = anime.cover_image || anime.coverImage || "/placeholder.svg?height=400&width=300"
+  const id = anime.id
 
   return (
-    <Link href={`/anime/${anime.id}`}>
-      <Card className={cn("overflow-hidden border-0 anime-card-hover anime-card", className)}>
-        <div className="relative aspect-[3/4] overflow-hidden">
-          <Image
-            src={coverImage || "/placeholder.svg"}
-            alt={anime.title}
-            fill
-            className="object-cover transition-transform duration-300 hover:scale-105"
-          />
-          <div className="absolute top-2 right-2">
-            <Badge className={cn("text-white", getStatusColor(anime.status))}>{anime.status}</Badge>
+    <Link href={`/anime/${id}`} className="group">
+      <Card className="overflow-hidden border-0 bg-transparent shadow-none transition-all hover:shadow-md">
+        <div className="relative overflow-hidden rounded-md">
+          <div
+            className={`relative ${
+              aspectRatio === "portrait" ? "aspect-[3/4]" : "aspect-square"
+            } overflow-hidden rounded-md`}
+          >
+            <Image
+              src={coverImage || "/placeholder.svg"}
+              alt={title}
+              fill
+              className="object-cover transition-all group-hover:scale-105"
+              sizes={width ? `${width}px` : "(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"}
+            />
+            <div className="absolute inset-0 bg-black/10 transition-opacity group-hover:bg-black/20" />
           </div>
-          {anime.rating && (
-            <div className="absolute bottom-2 left-2 flex items-center gap-1 bg-black/70 text-white text-sm px-2 py-1 rounded-md">
-              <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
-              <span>{anime.rating.toFixed(1)}</span>
-            </div>
-          )}
-          {(uploadedBy || isCommunity) && (
-            <div className="absolute top-2 left-2">
-              <Badge variant="outline" className="bg-primary/20 text-primary border-primary/30">
-                Community
-              </Badge>
-            </div>
-          )}
         </div>
-        <CardContent className="p-3">
-          <h3 className="font-semibold line-clamp-1">{anime.title}</h3>
-          <p className="text-xs text-muted-foreground">{releaseYear}</p>
+        <CardContent className="px-1 pt-3 pb-1">
+          <h3 className="line-clamp-1 text-base font-medium">{title}</h3>
+          <p className="line-clamp-1 text-xs text-muted-foreground">
+            {anime.episodes?.length || anime.episodeCount || 0} Episodes
+          </p>
         </CardContent>
       </Card>
     </Link>

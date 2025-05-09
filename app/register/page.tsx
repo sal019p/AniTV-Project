@@ -2,33 +2,43 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-// Update the import to use the icons from the new file
-import { AlertCircle, Loader2 } from "@/components/ui/icons"
+import { AlertCircle, Loader2 } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import NextLink from "next/link"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { isSupabaseConfigured } from "@/lib/supabase"
 
 export default function RegisterPage() {
   const router = useRouter()
   const { toast } = useToast()
-  const supabase = createClientComponentClient()
-
   const [email, setEmail] = useState("")
+  const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isConfigured, setIsConfigured] = useState(true)
+
+  // Check if Supabase is configured
+  useEffect(() => {
+    setIsConfigured(isSupabaseConfigured())
+  }, [])
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!email || !password || !confirmPassword) {
+    if (!isConfigured) {
+      setError("Supabase is not configured. Please set up your environment variables.")
+      return
+    }
+
+    if (!email || !username || !password || !confirmPassword) {
       setError("Please fill in all fields")
       return
     }
@@ -42,22 +52,36 @@ export default function RegisterPage() {
     setError(null)
 
     try {
-      const { error } = await supabase.auth.signUp({
+      // Only import and create the client if Supabase is configured
+      const { createClientComponentClient } = await import("@supabase/auth-helpers-nextjs")
+      const supabase = createClientComponentClient()
+
+      // Sign up the user
+      const { data, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
-        options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
-        },
       })
 
-      if (error) throw error
+      if (signUpError) throw signUpError
 
-      toast({
-        title: "Registration successful",
-        description: "Please check your email to verify your account",
-      })
+      if (data.user) {
+        // Create a profile for the user
+        const { error: profileError } = await supabase.from("profiles").insert({
+          id: data.user.id,
+          username,
+          email,
+          created_at: new Date().toISOString(),
+        })
 
-      router.push("/login")
+        if (profileError) throw profileError
+
+        toast({
+          title: "Registration successful",
+          description: "Your account has been created successfully",
+        })
+
+        router.push("/login")
+      }
     } catch (err) {
       console.error(err)
       setError(err instanceof Error ? err.message : "An unknown error occurred")
@@ -71,14 +95,36 @@ export default function RegisterPage() {
     }
   }
 
+  // For demo mode, allow registration with any credentials
+  const handleDemoRegister = () => {
+    if (isConfigured) return
+
+    toast({
+      title: "Demo mode active",
+      description: "Registration is not available in demo mode. Please use the demo login.",
+    })
+
+    setTimeout(() => {
+      router.push("/login")
+    }, 1500)
+  }
+
   return (
     <div className="container mx-auto py-10">
       <Card className="max-w-md mx-auto">
         <CardHeader>
           <CardTitle>Register</CardTitle>
-          <CardDescription>Create a new account to get started</CardDescription>
+          <CardDescription>Create a new account to access AniTV</CardDescription>
         </CardHeader>
         <CardContent>
+          {!isConfigured && (
+            <Alert variant="warning" className="mb-4">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                Supabase is not configured. Please set up your environment variables. You can use demo mode instead.
+              </AlertDescription>
+            </Alert>
+          )}
           <form onSubmit={handleRegister} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
@@ -93,13 +139,25 @@ export default function RegisterPage() {
             </div>
 
             <div className="space-y-2">
+              <Label htmlFor="username">Username</Label>
+              <Input
+                id="username"
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="Choose a username"
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
               <Input
                 id="password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter your password"
+                placeholder="Create a password"
                 required
               />
             </div>
@@ -125,16 +183,22 @@ export default function RegisterPage() {
           </form>
         </CardContent>
         <CardFooter className="flex flex-col gap-4">
-          <Button type="submit" onClick={handleRegister} disabled={loading} className="w-full">
-            {loading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Registering...
-              </>
-            ) : (
-              "Register"
-            )}
-          </Button>
+          {isConfigured ? (
+            <Button type="submit" onClick={handleRegister} disabled={loading} className="w-full">
+              {loading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Registering...
+                </>
+              ) : (
+                "Register"
+              )}
+            </Button>
+          ) : (
+            <Button type="button" onClick={handleDemoRegister} className="w-full">
+              Continue to Demo Mode
+            </Button>
+          )}
 
           <div className="text-center text-sm">
             Already have an account?{" "}

@@ -17,11 +17,15 @@ export default function HomePage() {
   const [communityUploads, setCommunityUploads] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [isConfigured, setIsConfigured] = useState(true)
 
   useEffect(() => {
+    // Check if Supabase is configured
+    setIsConfigured(isSupabaseConfigured())
+
     async function fetchData() {
       try {
-        // Check if Supabase is configured
+        // If Supabase is not configured, use mock data
         if (!isSupabaseConfigured()) {
           console.warn("Supabase is not configured. Using mock data instead.")
           setFeaturedAnime(mockFeaturedAnime)
@@ -101,8 +105,17 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen">
-      {error && (
+      {!isConfigured && (
         <Alert variant="warning" className="max-w-7xl mx-auto mt-4 mb-0 mx-4 sm:mx-6 lg:mx-8">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            Supabase is not configured. Please set up your environment variables. Using demo data instead.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {error && error !== "Database connection not configured. Using demo data instead." && (
+        <Alert variant="destructive" className="max-w-7xl mx-auto mt-4 mb-0 mx-4 sm:mx-6 lg:mx-8">
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>{error}</AlertDescription>
         </Alert>
@@ -117,7 +130,8 @@ export default function HomePage() {
               heroAnime.cover_image ||
               heroAnime.bannerImage ||
               heroAnime.coverImage ||
-              "/placeholder.svg?height=600&width=1200"
+              "/placeholder.svg?height=600&width=1200" ||
+              "/placeholder.svg"
             }
             alt={heroAnime.title}
             fill

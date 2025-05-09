@@ -1,42 +1,100 @@
-import { createClient } from "@supabase/supabase-js"
 import type { Database } from "@/types/supabase"
 
 // Check if environment variables are available
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-// Validate environment variables
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.error(
-    "Missing Supabase environment variables. Please make sure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY are set.",
-  )
-}
-
-// Create a singleton instance of the Supabase client with proper error handling
-export const supabase = createClient<Database>(
-  supabaseUrl || "https://placeholder-url.supabase.co", // Fallback URL to prevent construction errors
-  supabaseAnonKey || "placeholder-key", // Fallback key to prevent construction errors
-  {
-    auth: {
-      persistSession: true,
-    },
-  },
-)
-
 // Helper function to check if Supabase is properly configured
 export function isSupabaseConfigured() {
   return !!supabaseUrl && !!supabaseAnonKey
 }
 
+// Create a mock client that mimics the Supabase client API
+const createMockClient = () => {
+  console.warn("Using mock Supabase client. Please configure your environment variables.")
+
+  return {
+    auth: {
+      getSession: () => Promise.resolve({ data: { session: null }, error: null }),
+      getUser: () => Promise.resolve({ data: { user: null }, error: null }),
+      onAuthStateChange: () => ({
+        data: {
+          subscription: {
+            unsubscribe: () => {},
+          },
+        },
+      }),
+      signInWithPassword: () => Promise.resolve({ data: null, error: new Error("Supabase not configured") }),
+      signUp: () => Promise.resolve({ data: { user: null }, error: new Error("Supabase not configured") }),
+      signOut: () => Promise.resolve({ error: null }),
+    },
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          single: () => Promise.resolve({ data: null, error: null }),
+          limit: () => Promise.resolve({ data: [], error: null }),
+          order: () => Promise.resolve({ data: [], error: null }),
+        }),
+        order: () => Promise.resolve({ data: [], error: null }),
+        limit: () => Promise.resolve({ data: [], error: null }),
+      }),
+      insert: () => ({
+        select: () => ({
+          single: () => Promise.resolve({ data: null, error: null }),
+        }),
+      }),
+      update: () => ({
+        eq: () => Promise.resolve({ error: null }),
+      }),
+      delete: () => ({
+        eq: () => Promise.resolve({ error: null }),
+      }),
+    }),
+    storage: {
+      from: () => ({
+        upload: () => Promise.resolve({ data: null, error: null }),
+        getPublicUrl: () => ({ data: { publicUrl: "" } }),
+      }),
+    },
+  }
+}
+
+// Create a function to get the Supabase client
+let supabaseInstance: any = null
+
+export async function getSupabaseClient() {
+  if (!isSupabaseConfigured()) {
+    return createMockClient()
+  }
+
+  if (supabaseInstance) {
+    return supabaseInstance
+  }
+
+  try {
+    // Dynamically import the Supabase client only when needed
+    const { createClient } = await import("@supabase/supabase-js")
+    supabaseInstance = createClient<Database>(supabaseUrl!, supabaseAnonKey!)
+    return supabaseInstance
+  } catch (error) {
+    console.error("Error creating Supabase client:", error)
+    return createMockClient()
+  }
+}
+
+// For backward compatibility, export a mock client
+export const supabase = createMockClient()
+
 // Helper function to get a user's profile
 export async function getUserById(userId: string) {
   if (!isSupabaseConfigured()) {
-    console.error("Supabase is not properly configured")
+    console.warn("Supabase is not configured. Returning mock data.")
     return null
   }
 
   try {
-    const { data, error } = await supabase.from("profiles").select("*").eq("id", userId).single()
+    const client = await getSupabaseClient()
+    const { data, error } = await client.from("profiles").select("*").eq("id", userId).single()
 
     if (error) {
       console.error("Error fetching user profile:", error)
@@ -53,12 +111,13 @@ export async function getUserById(userId: string) {
 // Helper function to get anime by ID
 export async function getAnimeById(id: string) {
   if (!isSupabaseConfigured()) {
-    console.error("Supabase is not properly configured")
+    console.warn("Supabase is not configured. Returning mock data.")
     return null
   }
 
   try {
-    const { data, error } = await supabase
+    const client = await getSupabaseClient()
+    const { data, error } = await client
       .from("anime")
       .select(`
         *,
@@ -82,12 +141,13 @@ export async function getAnimeById(id: string) {
 // Helper function to get all anime
 export async function getAllAnime() {
   if (!isSupabaseConfigured()) {
-    console.error("Supabase is not properly configured")
+    console.warn("Supabase is not configured. Returning mock data.")
     return []
   }
 
   try {
-    const { data, error } = await supabase.from("anime").select("*").order("created_at", { ascending: false })
+    const client = await getSupabaseClient()
+    const { data, error } = await client.from("anime").select("*").order("created_at", { ascending: false })
 
     if (error) {
       console.error("Error fetching all anime:", error)
@@ -104,12 +164,13 @@ export async function getAllAnime() {
 // Helper function to get featured anime
 export async function getFeaturedAnime() {
   if (!isSupabaseConfigured()) {
-    console.error("Supabase is not properly configured")
+    console.warn("Supabase is not configured. Returning mock data.")
     return []
   }
 
   try {
-    const { data, error } = await supabase.from("anime").select("*").eq("is_featured", true).limit(5)
+    const client = await getSupabaseClient()
+    const { data, error } = await client.from("anime").select("*").eq("is_featured", true).limit(5)
 
     if (error) {
       console.error("Error fetching featured anime:", error)
@@ -126,12 +187,13 @@ export async function getFeaturedAnime() {
 // Helper function to get community uploads
 export async function getCommunityUploads() {
   if (!isSupabaseConfigured()) {
-    console.error("Supabase is not properly configured")
+    console.warn("Supabase is not configured. Returning mock data.")
     return []
   }
 
   try {
-    const { data, error } = await supabase
+    const client = await getSupabaseClient()
+    const { data, error } = await client
       .from("anime")
       .select("*")
       .eq("is_community", true)
@@ -152,12 +214,13 @@ export async function getCommunityUploads() {
 // Helper function to get user uploads
 export async function getUserUploads(userId: string) {
   if (!isSupabaseConfigured()) {
-    console.error("Supabase is not properly configured")
+    console.warn("Supabase is not configured. Returning mock data.")
     return []
   }
 
   try {
-    const { data, error } = await supabase
+    const client = await getSupabaseClient()
+    const { data, error } = await client
       .from("anime")
       .select("*")
       .eq("uploaded_by", userId)
@@ -178,12 +241,13 @@ export async function getUserUploads(userId: string) {
 // Helper function to get user favorites
 export async function getUserFavorites(userId: string) {
   if (!isSupabaseConfigured()) {
-    console.error("Supabase is not properly configured")
+    console.warn("Supabase is not configured. Returning mock data.")
     return []
   }
 
   try {
-    const { data, error } = await supabase
+    const client = await getSupabaseClient()
+    const { data, error } = await client
       .from("favorites")
       .select(`
         anime_id,
@@ -207,12 +271,13 @@ export async function getUserFavorites(userId: string) {
 // Helper function to add anime to favorites
 export async function addToFavorites(userId: string, animeId: string) {
   if (!isSupabaseConfigured()) {
-    console.error("Supabase is not properly configured")
+    console.warn("Supabase is not configured. Returning mock response.")
     return { success: false, message: "Database not configured" }
   }
 
   try {
-    const { error } = await supabase.from("favorites").insert({ user_id: userId, anime_id: animeId })
+    const client = await getSupabaseClient()
+    const { error } = await client.from("favorites").insert({ user_id: userId, anime_id: animeId })
 
     if (error) {
       if (error.code === "23505") {
@@ -234,12 +299,13 @@ export async function addToFavorites(userId: string, animeId: string) {
 // Helper function to remove anime from favorites
 export async function removeFromFavorites(userId: string, animeId: string) {
   if (!isSupabaseConfigured()) {
-    console.error("Supabase is not properly configured")
+    console.warn("Supabase is not configured. Returning mock response.")
     return { success: false, message: "Database not configured" }
   }
 
   try {
-    const { error } = await supabase.from("favorites").delete().eq("user_id", userId).eq("anime_id", animeId)
+    const client = await getSupabaseClient()
+    const { error } = await client.from("favorites").delete().eq("user_id", userId).eq("anime_id", animeId)
 
     if (error) {
       console.error("Error removing from favorites:", error)
@@ -256,12 +322,13 @@ export async function removeFromFavorites(userId: string, animeId: string) {
 // Helper function to check if anime is in favorites
 export async function isInFavorites(userId: string, animeId: string) {
   if (!isSupabaseConfigured()) {
-    console.error("Supabase is not properly configured")
+    console.warn("Supabase is not configured. Returning mock response.")
     return false
   }
 
   try {
-    const { data, error } = await supabase
+    const client = await getSupabaseClient()
+    const { data, error } = await client
       .from("favorites")
       .select("*")
       .eq("user_id", userId)
@@ -284,12 +351,13 @@ export async function isInFavorites(userId: string, animeId: string) {
 // Helper function to upload a video to Supabase storage
 export async function uploadVideo(file: File, path: string, onProgress?: (progress: number) => void) {
   if (!isSupabaseConfigured()) {
-    console.error("Supabase is not properly configured")
+    console.warn("Supabase is not configured. Returning mock response.")
     return { success: false, error: { message: "Database not configured" } }
   }
 
   try {
-    const { data, error } = await supabase.storage.from("videos").upload(path, file, {
+    const client = await getSupabaseClient()
+    const { data, error } = await client.storage.from("videos").upload(path, file, {
       cacheControl: "3600",
       upsert: false,
       onUploadProgress: (progress) => {
@@ -306,7 +374,7 @@ export async function uploadVideo(file: File, path: string, onProgress?: (progre
     // Get the public URL for the uploaded file
     const {
       data: { publicUrl },
-    } = supabase.storage.from("videos").getPublicUrl(path)
+    } = client.storage.from("videos").getPublicUrl(path)
 
     return { success: true, path, publicUrl }
   } catch (error: any) {
@@ -318,12 +386,13 @@ export async function uploadVideo(file: File, path: string, onProgress?: (progre
 // Helper function to add an episode to an anime
 export async function addEpisode(animeId: string, episodeData: any) {
   if (!isSupabaseConfigured()) {
-    console.error("Supabase is not properly configured")
+    console.warn("Supabase is not configured. Returning mock response.")
     return { success: false, error: { message: "Database not configured" } }
   }
 
   try {
-    const { data, error } = await supabase
+    const client = await getSupabaseClient()
+    const { data, error } = await client
       .from("anime_episodes")
       .insert({
         anime_id: animeId,
@@ -347,12 +416,13 @@ export async function addEpisode(animeId: string, episodeData: any) {
 // Helper function to add a new anime
 export async function addAnime(animeData: any) {
   if (!isSupabaseConfigured()) {
-    console.error("Supabase is not properly configured")
+    console.warn("Supabase is not configured. Returning mock response.")
     return { success: false, error: { message: "Database not configured" } }
   }
 
   try {
-    const { data, error } = await supabase.from("anime").insert(animeData).select().single()
+    const client = await getSupabaseClient()
+    const { data, error } = await client.from("anime").insert(animeData).select().single()
 
     if (error) {
       console.error("Error adding anime:", error)

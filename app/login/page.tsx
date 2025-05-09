@@ -2,30 +2,41 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-// Update the import to use the icons from the new file
-import { AlertCircle, Loader2 } from "@/components/ui/icons"
+import { AlertCircle, Loader2 } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import NextLink from "next/link"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { isSupabaseConfigured } from "@/lib/supabase"
+import { useAuth } from "@/hooks/use-auth"
 
 export default function LoginPage() {
   const router = useRouter()
   const { toast } = useToast()
-  const supabase = createClientComponentClient()
-
+  const { signIn } = useAuth()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isConfigured, setIsConfigured] = useState(true)
+
+  // Check if Supabase is configured
+  useEffect(() => {
+    setIsConfigured(isSupabaseConfigured())
+  }, [])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    if (!isConfigured) {
+      setError("Supabase is not configured. Please set up your environment variables.")
+      return
+    }
 
     if (!email || !password) {
       setError("Please enter both email and password")
@@ -36,12 +47,11 @@ export default function LoginPage() {
     setError(null)
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      })
+      const { success, error } = await signIn(email, password)
 
-      if (error) throw error
+      if (!success) {
+        throw new Error(error || "Failed to sign in")
+      }
 
       toast({
         title: "Login successful",
@@ -63,6 +73,20 @@ export default function LoginPage() {
     }
   }
 
+  // For demo mode, allow login with any credentials
+  const handleDemoLogin = () => {
+    if (isConfigured) return
+
+    toast({
+      title: "Demo mode active",
+      description: "Logging in with demo account",
+    })
+
+    setTimeout(() => {
+      router.push("/")
+    }, 1000)
+  }
+
   return (
     <div className="container mx-auto py-10">
       <Card className="max-w-md mx-auto">
@@ -71,6 +95,14 @@ export default function LoginPage() {
           <CardDescription>Enter your credentials to access your account</CardDescription>
         </CardHeader>
         <CardContent>
+          {!isConfigured && (
+            <Alert variant="warning" className="mb-4">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                Supabase is not configured. Please set up your environment variables. You can use demo mode instead.
+              </AlertDescription>
+            </Alert>
+          )}
           <form onSubmit={handleLogin} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
@@ -105,16 +137,22 @@ export default function LoginPage() {
           </form>
         </CardContent>
         <CardFooter className="flex flex-col gap-4">
-          <Button type="submit" onClick={handleLogin} disabled={loading} className="w-full">
-            {loading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Logging in...
-              </>
-            ) : (
-              "Login"
-            )}
-          </Button>
+          {isConfigured ? (
+            <Button type="submit" onClick={handleLogin} disabled={loading} className="w-full">
+              {loading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Logging in...
+                </>
+              ) : (
+                "Login"
+              )}
+            </Button>
+          ) : (
+            <Button type="button" onClick={handleDemoLogin} className="w-full">
+              Continue in Demo Mode
+            </Button>
+          )}
 
           <div className="text-center text-sm">
             Don't have an account?{" "}
