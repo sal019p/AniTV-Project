@@ -4,10 +4,28 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Star } from "lucide-react"
 import { cn } from "@/lib/utils"
-import type { Anime } from "@/lib/data"
 
 interface AnimeCardProps {
-  anime: Anime
+  anime: {
+    id: string
+    title: string
+    description: string
+    cover_image?: string
+    coverImage?: string
+    banner_image?: string | null
+    bannerImage?: string | null
+    episodes_count?: number
+    episodes?: number
+    status: string
+    rating: number
+    genres: string[]
+    release_year?: number
+    releaseYear?: number
+    uploaded_by?: string | null
+    uploadedBy?: string | null
+    is_community?: boolean
+    isCommunity?: boolean
+  }
   className?: string
 }
 
@@ -26,12 +44,18 @@ export function AnimeCard({ anime, className }: AnimeCardProps) {
     }
   }
 
+  // Handle different property names between mock data and Supabase data
+  const coverImage = anime.cover_image || anime.coverImage || "/placeholder.svg"
+  const isCommunity = anime.is_community || anime.isCommunity || false
+  const uploadedBy = anime.uploaded_by || anime.uploadedBy
+  const releaseYear = anime.release_year || anime.releaseYear || new Date().getFullYear()
+
   return (
     <Link href={`/anime/${anime.id}`}>
       <Card className={cn("overflow-hidden border-0 anime-card-hover anime-card", className)}>
         <div className="relative aspect-[3/4] overflow-hidden">
           <Image
-            src={anime.coverImage || "/placeholder.svg"}
+            src={coverImage || "/placeholder.svg"}
             alt={anime.title}
             fill
             className="object-cover transition-transform duration-300 hover:scale-105"
@@ -45,7 +69,7 @@ export function AnimeCard({ anime, className }: AnimeCardProps) {
               <span>{anime.rating.toFixed(1)}</span>
             </div>
           )}
-          {anime.uploadedBy && (
+          {(uploadedBy || isCommunity) && (
             <div className="absolute top-2 left-2">
               <Badge variant="outline" className="bg-primary/20 text-primary border-primary/30">
                 Community
@@ -55,7 +79,7 @@ export function AnimeCard({ anime, className }: AnimeCardProps) {
         </div>
         <CardContent className="p-3">
           <h3 className="font-semibold line-clamp-1">{anime.title}</h3>
-          <p className="text-xs text-muted-foreground">{anime.releaseYear}</p>
+          <p className="text-xs text-muted-foreground">{releaseYear}</p>
         </CardContent>
       </Card>
     </Link>

@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { AlertCircle } from "lucide-react"
+import { AlertCircle, Loader2 } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 
 export default function LoginPage() {
@@ -22,10 +22,15 @@ export default function LoginPage() {
     e.preventDefault()
     setError("")
 
+    if (!email || !password) {
+      setError("Please enter both email and password")
+      return
+    }
+
     try {
       await login(email, password)
-    } catch (err) {
-      setError("Invalid email or password. Please try again.")
+    } catch (err: any) {
+      setError(err.message || "Invalid email or password. Please try again.")
     }
   }
 
@@ -71,7 +76,13 @@ export default function LoginPage() {
               />
             </div>
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Logging in..." : "Login"}
+              {loading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Logging in...
+                </>
+              ) : (
+                "Login"
+              )}
             </Button>
           </form>
         </CardContent>

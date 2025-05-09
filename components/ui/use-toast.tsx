@@ -184,22 +184,3 @@ export function useToast() {
 }
 
 export type { ToasterToast }
-
-export const Toaster = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(({ ...props }, ref) => {
-  const { toasts } = useToast()
-
-  return (
-    <div ref={ref} {...props}>
-      {toasts.map(({ id, title, description, action, ...props }) => (
-        <div key={id} {...props}>
-          <div className="grid gap-1">
-            {title && <div className="font-medium">{title}</div>}
-            {description && <div className="text-sm opacity-90">{description}</div>}
-          </div>
-          {action}
-        </div>
-      ))}
-    </div>
-  )
-})
-Toaster.displayName = "Toaster"

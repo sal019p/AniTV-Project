@@ -9,11 +9,11 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { AlertCircle } from "lucide-react"
+import { AlertCircle, Loader2 } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 
 export default function RegisterPage() {
-  const [name, setName] = useState("")
+  const [username, setUsername] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
@@ -24,15 +24,25 @@ export default function RegisterPage() {
     e.preventDefault()
     setError("")
 
+    if (!username || !email || !password || !confirmPassword) {
+      setError("Please fill in all fields")
+      return
+    }
+
     if (password !== confirmPassword) {
       setError("Passwords do not match")
       return
     }
 
+    if (password.length < 6) {
+      setError("Password must be at least 6 characters long")
+      return
+    }
+
     try {
-      await register(name, email, password)
-    } catch (err) {
-      setError("Registration failed. Please try again.")
+      await register(email, password, username)
+    } catch (err: any) {
+      setError(err.message || "Registration failed. Please try again.")
     }
   }
 
@@ -52,13 +62,13 @@ export default function RegisterPage() {
               </Alert>
             )}
             <div className="space-y-2">
-              <Label htmlFor="name">Name</Label>
+              <Label htmlFor="username">Username</Label>
               <Input
-                id="name"
+                id="username"
                 type="text"
-                placeholder="John Doe"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
+                placeholder="johndoe"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
                 required
               />
             </div>
@@ -94,7 +104,13 @@ export default function RegisterPage() {
               />
             </div>
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Creating account..." : "Register"}
+              {loading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Creating account...
+                </>
+              ) : (
+                "Register"
+              )}
             </Button>
           </form>
         </CardContent>

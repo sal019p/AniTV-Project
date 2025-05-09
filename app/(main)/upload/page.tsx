@@ -14,12 +14,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Slider } from "@/components/ui/slider"
 import { Switch } from "@/components/ui/switch"
-import { AlertCircle, Info, Loader2, Search, CheckCircle2 } from "lucide-react"
+import { AlertCircle, Info, Loader2, Search, CheckCircle2, Upload, LinkIcon } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Progress } from "@/components/ui/progress"
 import Image from "next/image"
-import { addAnime, type Anime } from "@/lib/data"
 import { toast } from "@/components/ui/use-toast"
-import { ToastAction } from "@/components/ui/toast"
+import { addAnime, uploadVideo, addEpisode } from "@/lib/supabase"
 
 export default function UploadPage() {
   const { user, loading } = useAuth()
@@ -38,9 +38,12 @@ export default function UploadPage() {
   const [releaseYear, setReleaseYear] = useState(new Date().getFullYear())
   const [genres, setGenres] = useState<string[]>([])
   const [videoUrl, setVideoUrl] = useState("")
+  const [videoFile, setVideoFile] = useState<File | null>(null)
+  const [uploadProgress, setUploadProgress] = useState(0)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState("")
   const [success, setSuccess] = useState(false)
+  const [uploadMethod, setUploadMethod] = useState<"file" | "link">("link")
 
   const [bannerImageUrl, setBannerImageUrl] = useState("")
   const [coverImageUrl, setCoverImageUrl] = useState("")
@@ -171,11 +174,32 @@ export default function UploadPage() {
     }
   }
 
+  const handleVideoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      // Check if file is a video
+      if (!file.type.startsWith("video/")) {
+        setError("Please upload a valid video file")
+        return
+      }
+
+      // Check file size (limit to 500MB)
+      if (file.size > 500 * 1024 * 1024) {
+        setError("Video file is too large. Maximum size is 500MB")
+        return
+      }
+
+      setVideoFile(file)
+      setError("")
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsSubmitting(true)
     setError("")
     setSuccess(false)
+    setUploadProgress(0)
 
     // Validate form
     if (!title || !description) {
@@ -185,7 +209,7 @@ export default function UploadPage() {
     }
 
     // Validate image URLs
-    const isBannerValid = await validateImageUrl(bannerImageUrl, "banner")
+    const isBannerValid = bannerImageUrl ? await validateImageUrl(bannerImageUrl, "banner") : true
     const isCoverValid = await validateImageUrl(coverImageUrl, "cover")
 
     if (!isCoverValid) {
@@ -194,37 +218,85 @@ export default function UploadPage() {
       return
     }
 
+    // Validate video
+    if (uploadMethod === "file" && !videoFile) {
+      setError("Please upload a video file")
+      setIsSubmitting(false)
+      return
+    }
+
+    if (uploadMethod === "link" && !videoUrl) {
+      setError("Please provide a video URL")
+      setIsSubmitting(false)
+      return
+    }
+
     try {
-      // Create anime object with all form data
-      const animeData: Partial<Anime> = {
-        title,
-        description,
-        episodes,
-        status: status as any,
-        rating: rating[0],
-        releaseYear,
-        genres,
-        videoUrl,
-        bannerImage: bannerImageUrl,
-        coverImage: coverImageUrl,
-        uploadedBy: user?.id,
+      let finalVideoUrl = videoUrl
+
+      // If uploading a file, upload it to Supabase storage
+      if (uploadMethod === "file" && videoFile) {
+        const fileName = `${Date.now()}-${videoFile.name.replace(/\s+/g, "-")}`
+        const filePath = `${user?.id}/${fileName}`
+
+        const { success, publicUrl, error } = await uploadVideo(videoFile, filePath, (progress) => {
+          setUploadProgress(progress)
+        })
+
+        if (!success) {
+          throw new Error(error?.message || "Failed to upload video")
+        }
+
+        finalVideoUrl = publicUrl
       }
 
-      console.log("Submitting anime data:", animeData)
+      // Create anime object with all form data
+      const animeData = {
+        title,
+        description,
+        cover_image: coverImageUrl,
+        banner_image: bannerImageUrl || null,
+        episodes_count: episodes,
+        status,
+        rating: rating[0],
+        genres,
+        release_year: releaseYear,
+        uploaded_by: user?.id,
+        is_community: true,
+        is_featured: false,
+        created_at: new Date().toISOString(),
+      }
 
-      // Add the anime to our data store
-      const newAnime = await addAnime(animeData, user?.id || "")
+      // Add the anime to Supabase
+      const { success: animeSuccess, anime, error: animeError } = await addAnime(animeData)
+
+      if (!animeSuccess) {
+        throw new Error(animeError?.message || "Failed to add anime")
+      }
+
+      // Add the first episode
+      if (anime) {
+        const episodeData = {
+          anime_id: anime.id,
+          title: `Episode 1`,
+          description: `First episode of ${title}`,
+          episode_number: 1,
+          video_url: finalVideoUrl,
+          created_at: new Date().toISOString(),
+        }
+
+        const { success: episodeSuccess, error: episodeError } = await addEpisode(anime.id, episodeData)
+
+        if (!episodeSuccess) {
+          throw new Error(episodeError?.message || "Failed to add episode")
+        }
+      }
 
       // Show success message
       setSuccess(true)
       toast({
         title: "Anime uploaded successfully!",
         description: `${title} has been added to your uploads.`,
-        action: (
-          <ToastAction altText="View" onClick={() => router.push(`/anime/${newAnime.id}`)}>
-            View
-          </ToastAction>
-        ),
       })
 
       // Reset form
@@ -236,18 +308,20 @@ export default function UploadPage() {
       setReleaseYear(new Date().getFullYear())
       setGenres([])
       setVideoUrl("")
+      setVideoFile(null)
       setBannerImageUrl("")
       setCoverImageUrl("")
       setImageValidationStatus({ banner: false, cover: false })
       setSelectedAnime(null)
+      setUploadProgress(0)
 
       // Redirect after a short delay
       setTimeout(() => {
         router.push("/profile?tab=uploads")
       }, 2000)
-    } catch (error) {
+    } catch (error: any) {
       console.error("Upload failed:", error)
-      setError("Failed to upload anime. Please try again.")
+      setError(error.message || "Failed to upload anime. Please try again.")
     } finally {
       setIsSubmitting(false)
     }
@@ -462,15 +536,90 @@ export default function UploadPage() {
               </div>
 
               <div className="grid gap-3">
-                <Label htmlFor="videoUrl">Video URL (YouTube, CatBox, PeerTube)</Label>
-                <Input
-                  id="videoUrl"
-                  type="url"
-                  placeholder="https://www.youtube.com/watch?v=..."
-                  value={videoUrl}
-                  onChange={(e) => setVideoUrl(e.target.value)}
-                />
+                <Label>Video Upload Method</Label>
+                <div className="flex space-x-4">
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="upload-link"
+                      checked={uploadMethod === "link"}
+                      onCheckedChange={() => setUploadMethod("link")}
+                    />
+                    <Label htmlFor="upload-link">Link</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="upload-file"
+                      checked={uploadMethod === "file"}
+                      onCheckedChange={() => setUploadMethod("file")}
+                    />
+                    <Label htmlFor="upload-file">File Upload</Label>
+                  </div>
+                </div>
               </div>
+
+              {uploadMethod === "link" ? (
+                <div className="grid gap-3">
+                  <Label htmlFor="videoUrl">
+                    Video URL <span className="text-destructive">*</span>
+                  </Label>
+                  <div className="flex">
+                    <div className="relative flex-1">
+                      <LinkIcon className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="videoUrl"
+                        type="url"
+                        className="pl-8"
+                        placeholder="https://example.com/video.mp4"
+                        value={videoUrl}
+                        onChange={(e) => setVideoUrl(e.target.value)}
+                        required={uploadMethod === "link"}
+                      />
+                    </div>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Provide a direct link to the video file (MP4, WebM, etc.) or a YouTube/Vimeo URL
+                  </p>
+                </div>
+              ) : (
+                <div className="grid gap-3">
+                  <Label htmlFor="videoFile">
+                    Video File <span className="text-destructive">*</span>
+                  </Label>
+                  <div className="border-2 border-dashed rounded-lg p-6 text-center">
+                    <Input
+                      id="videoFile"
+                      type="file"
+                      accept="video/*"
+                      className="hidden"
+                      onChange={handleVideoFileChange}
+                      required={uploadMethod === "file"}
+                    />
+                    <Label htmlFor="videoFile" className="cursor-pointer">
+                      <div className="flex flex-col items-center gap-2">
+                        <Upload className="h-10 w-10 text-muted-foreground" />
+                        <span className="font-medium">{videoFile ? videoFile.name : "Click to upload video file"}</span>
+                        <span className="text-sm text-muted-foreground">
+                          MP4, WebM, or other video formats (max 500MB)
+                        </span>
+                      </div>
+                    </Label>
+                  </div>
+                  {videoFile && (
+                    <div className="text-sm text-muted-foreground">
+                      Selected file: {videoFile.name} ({(videoFile.size / (1024 * 1024)).toFixed(2)} MB)
+                    </div>
+                  )}
+                  {uploadProgress > 0 && (
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-sm">
+                        <span>Uploading...</span>
+                        <span>{Math.round(uploadProgress)}%</span>
+                      </div>
+                      <Progress value={uploadProgress} />
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="grid gap-3">
                 <Label>
@@ -551,7 +700,7 @@ export default function UploadPage() {
                             src={bannerImageUrl || "/placeholder.svg?height=100&width=200"}
                             alt="Banner placeholder"
                             fill
-                            className="object-cover rounded"
+                            className="rounded-md object-cover"
                           />
                           {imageValidationStatus.banner && (
                             <div className="absolute -top-2 -right-2 bg-green-500 text-white rounded-full p-1">
@@ -674,7 +823,15 @@ export default function UploadPage() {
                 </Button>
                 <Button
                   type="submit"
-                  disabled={isSubmitting || isValidatingImages || !coverImageUrl || !imageValidationStatus.cover}
+                  disabled={
+                    isSubmitting ||
+                    isValidatingImages ||
+                    !coverImageUrl ||
+                    !imageValidationStatus.cover ||
+                    (uploadMethod === "link" && !videoUrl) ||
+                    (uploadMethod === "file" && !videoFile) ||
+                    (uploadProgress > 0 && uploadProgress < 100)
+                  }
                 >
                   {isSubmitting ? (
                     <>
