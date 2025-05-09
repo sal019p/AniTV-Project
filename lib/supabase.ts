@@ -1,117 +1,219 @@
-// Simple mock data for when Supabase is not configured
-export const mockAnimeData = [
-  {
-    id: "1",
-    title: "Demon Slayer",
-    description: "A boy fights demons after his family is slaughtered and his sister is infected.",
-    cover_image: "/placeholder.svg?height=400&width=600",
-    episodes_count: 26,
-  },
-  {
-    id: "2",
-    title: "Attack on Titan",
-    description: "Humanity fights for survival against man-eating giants.",
-    cover_image: "/placeholder.svg?height=400&width=600",
-    episodes_count: 75,
-  },
-  {
-    id: "3",
-    title: "My Hero Academia",
-    description: "A boy born without superpowers fights to become the greatest hero.",
-    cover_image: "/placeholder.svg?height=400&width=600",
-    episodes_count: 113,
-  },
-]
+import { createClient } from "@supabase/supabase-js"
+import type { Database } from "@/types/supabase"
 
-export const mockEpisodeData = [
-  {
-    id: "1",
-    anime_id: "1",
-    title: "Cruelty",
-    episode_number: 1,
-    description: "Tanjiro's peaceful life is shattered when his family is slaughtered by demons.",
-    video_url: "#",
-  },
-  {
-    id: "2",
-    anime_id: "1",
-    title: "Trainer Sakonji Urokodaki",
-    episode_number: 2,
-    description: "Tanjiro begins his training to become a demon slayer.",
-    video_url: "#",
-  },
-]
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ""
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
 
-// Check if Supabase is configured
-export const isSupabaseConfigured = () => {
-  return (
-    typeof process.env.NEXT_PUBLIC_SUPABASE_URL === "string" &&
-    process.env.NEXT_PUBLIC_SUPABASE_URL.trim() !== "" &&
-    typeof process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY === "string" &&
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY.trim() !== ""
-  )
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.error("Missing Supabase environment variables")
 }
 
-// Helper functions for data fetching with fallbacks to mock data
-export const getCommunityUploads = async () => {
-  console.log("Getting community uploads")
+export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey)
 
-  if (!isSupabaseConfigured()) {
-    console.log("Supabase not configured, using mock data")
-    return { data: mockAnimeData }
+// Helper function to get a user's profile
+export async function getUserProfile(userId: string) {
+  const { data, error } = await supabase.from("profiles").select("*").eq("id", userId).single()
+
+  if (error) {
+    console.error("Error fetching user profile:", error)
+    return null
   }
 
-  try {
-    console.log("Fetching data from Supabase")
-    return { data: mockAnimeData } // For now, always return mock data
-  } catch (error) {
-    console.error("Error in getCommunityUploads:", error)
-    return { data: mockAnimeData }
-  }
+  return data
 }
 
-export const getAnimeById = async (id: string) => {
-  console.log(`Getting anime with id ${id}`)
+// Helper function to get anime by ID
+export async function getAnimeById(id: string) {
+  const { data, error } = await supabase
+    .from("anime")
+    .select(`
+      *,
+      episodes:anime_episodes(*)
+    `)
+    .eq("id", id)
+    .single()
 
-  if (!isSupabaseConfigured()) {
-    console.log(`Supabase not configured, using mock data for id ${id}`)
-    return {
-      data: mockAnimeData.find((anime) => anime.id === id) || null,
-    }
+  if (error) {
+    console.error("Error fetching anime:", error)
+    return null
   }
 
-  try {
-    console.log(`Fetching anime with id ${id} from Supabase`)
-    return {
-      data: mockAnimeData.find((anime) => anime.id === id) || null,
-    } // For now, always return mock data
-  } catch (error) {
-    console.error(`Error in getAnimeById for id ${id}:`, error)
-    return {
-      data: mockAnimeData.find((anime) => anime.id === id) || null,
-    }
-  }
+  return data
 }
 
-export const getEpisodesByAnimeId = async (animeId: string) => {
-  console.log(`Getting episodes for anime with id ${animeId}`)
+// Helper function to get all anime
+export async function getAllAnime() {
+  const { data, error } = await supabase.from("anime").select("*").order("created_at", { ascending: false })
 
-  if (!isSupabaseConfigured()) {
-    console.log(`Supabase not configured, using mock data for anime id ${animeId}`)
-    return {
-      data: mockEpisodeData.filter((episode) => episode.anime_id === animeId),
-    }
+  if (error) {
+    console.error("Error fetching all anime:", error)
+    return []
   }
 
-  try {
-    console.log(`Fetching episodes for anime with id ${animeId} from Supabase`)
-    return {
-      data: mockEpisodeData.filter((episode) => episode.anime_id === animeId),
-    } // For now, always return mock data
-  } catch (error) {
-    console.error(`Error in getEpisodesByAnimeId for anime id ${animeId}:`, error)
-    return {
-      data: mockEpisodeData.filter((episode) => episode.anime_id === animeId),
-    }
+  return data || []
+}
+
+// Helper function to get featured anime
+export async function getFeaturedAnime() {
+  const { data, error } = await supabase.from("anime").select("*").eq("is_featured", true).limit(5)
+
+  if (error) {
+    console.error("Error fetching featured anime:", error)
+    return []
   }
+
+  return data || []
+}
+
+// Helper function to get community uploads
+export async function getCommunityUploads() {
+  const { data, error } = await supabase
+    .from("anime")
+    .select("*")
+    .eq("is_community", true)
+    .order("created_at", { ascending: false })
+
+  if (error) {
+    console.error("Error fetching community uploads:", error)
+    return []
+  }
+
+  return data || []
+}
+
+// Helper function to get user uploads
+export async function getUserUploads(userId: string) {
+  const { data, error } = await supabase
+    .from("anime")
+    .select("*")
+    .eq("uploaded_by", userId)
+    .order("created_at", { ascending: false })
+
+  if (error) {
+    console.error("Error fetching user uploads:", error)
+    return []
+  }
+
+  return data || []
+}
+
+// Helper function to get user favorites
+export async function getUserFavorites(userId: string) {
+  const { data, error } = await supabase
+    .from("favorites")
+    .select(`
+      anime_id,
+      anime:anime_id(*)
+    `)
+    .eq("user_id", userId)
+
+  if (error) {
+    console.error("Error fetching user favorites:", error)
+    return []
+  }
+
+  // Extract the anime objects from the joined data
+  return data?.map((item) => item.anime) || []
+}
+
+// Helper function to add anime to favorites
+export async function addToFavorites(userId: string, animeId: string) {
+  const { error } = await supabase.from("favorites").insert({ user_id: userId, anime_id: animeId })
+
+  if (error) {
+    if (error.code === "23505") {
+      // Unique violation
+      console.log("Anime already in favorites")
+      return { success: true, message: "Anime already in favorites" }
+    }
+    console.error("Error adding to favorites:", error)
+    return { success: false, message: error.message }
+  }
+
+  return { success: true, message: "Added to favorites" }
+}
+
+// Helper function to remove anime from favorites
+export async function removeFromFavorites(userId: string, animeId: string) {
+  const { error } = await supabase.from("favorites").delete().eq("user_id", userId).eq("anime_id", animeId)
+
+  if (error) {
+    console.error("Error removing from favorites:", error)
+    return { success: false, message: error.message }
+  }
+
+  return { success: true, message: "Removed from favorites" }
+}
+
+// Helper function to check if anime is in favorites
+export async function isInFavorites(userId: string, animeId: string) {
+  const { data, error } = await supabase
+    .from("favorites")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("anime_id", animeId)
+    .single()
+
+  if (error && error.code !== "PGRST116") {
+    // PGRST116 is the error code for no rows returned
+    console.error("Error checking favorites:", error)
+    return false
+  }
+
+  return !!data
+}
+
+// Helper function to upload a video to Supabase storage
+export async function uploadVideo(file: File, path: string, onProgress?: (progress: number) => void) {
+  const { data, error } = await supabase.storage.from("videos").upload(path, file, {
+    cacheControl: "3600",
+    upsert: false,
+    onUploadProgress: (progress) => {
+      const percent = (progress.loaded / progress.total) * 100
+      onProgress?.(percent)
+    },
+  })
+
+  if (error) {
+    console.error("Error uploading video:", error)
+    return { success: false, error }
+  }
+
+  // Get the public URL for the uploaded file
+  const {
+    data: { publicUrl },
+  } = supabase.storage.from("videos").getPublicUrl(path)
+
+  return { success: true, path, publicUrl }
+}
+
+// Helper function to add an episode to an anime
+export async function addEpisode(animeId: string, episodeData: any) {
+  const { data, error } = await supabase
+    .from("anime_episodes")
+    .insert({
+      anime_id: animeId,
+      ...episodeData,
+    })
+    .select()
+    .single()
+
+  if (error) {
+    console.error("Error adding episode:", error)
+    return { success: false, error }
+  }
+
+  return { success: true, episode: data }
+}
+
+// Helper function to add a new anime
+export async function addAnime(animeData: any) {
+  const { data, error } = await supabase.from("anime").insert(animeData).select().single()
+
+  if (error) {
+    console.error("Error adding anime:", error)
+    return { success: false, error }
+  }
+
+  return { success: true, anime: data }
 }
